@@ -1,0 +1,7 @@
+# Logisim recovery files and backups
+*.circ.autosave
+*.circ.bak
+
+# Windows Explorer metadata
+Thumbs.db
+Desktop.ini
