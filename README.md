@@ -1,4 +1,12 @@
 
+# todo
+jmp
+cond jmp/ turing completeness
+SUB
+more alu stuff
+how to deal with instructions longer than word size, in other words, increase the size of ram 
+
+
 adder
 C A B | Ca Sum
 000  | 0   0
@@ -99,3 +107,33 @@ the register select mux has the following values
 4-ram
 5-pc
 6-reg_inst 
+
+
+
+LDA 14
+ADD 15
+
+opcodes 0001 - lda - 1110
+0010 1111
+
+0001 1110
+0010 1111
+...
+
+1101 1101
+1010 1010
+
+LDA 
+pc_out, mar_in
+ram_out, inst_in, pc_we
+inst_out, mar_in
+ram_out, a_in
+
+ADD 15: "load the contents of the address 15 from ram into register b and store the alu output in register A"
+pc_out, mar_in
+ram_out, inst_in, pc_we
+inst_out, mar_in
+ram_out, b_in
+alu_out, a_in
+
+
