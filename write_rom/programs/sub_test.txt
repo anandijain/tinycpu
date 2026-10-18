@@ -1,0 +1,4 @@
+ldi 5
+sta 15
+ldi 9
+sub 15

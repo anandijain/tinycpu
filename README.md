@@ -137,3 +137,7 @@ ram_out, b_in
 alu_out, a_in
 
 
+
+
+## expanding the size of ram 
+

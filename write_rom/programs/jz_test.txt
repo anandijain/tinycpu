@@ -1,0 +1,4 @@
+ldi 1
+jz 3
+ldi 2
+ldi 3

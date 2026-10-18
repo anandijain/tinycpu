@@ -7,4 +7,4 @@ Thumbs.db
 Desktop.ini
 
 # Rust build outputs
-/write_rom/target/
+target/
