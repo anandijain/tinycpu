@@ -1,0 +1,12 @@
+x = 4094
+y = 4092
+z = 4090
+
+LDI 5
+STA x
+LDI 3
+STA y
+LDA x
+ADD y 
+STA z ; expect 8 in ram[4090..4092]
+HLT

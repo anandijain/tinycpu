@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     error::Error,
     fmt::LowerHex,
     fs::{self, File},
@@ -226,15 +227,28 @@ fn execution_steps(op: Op) -> &'static [Control] {
     }
 }
 
-fn parse_instruction(source: &str) -> Result<Instruction, String> {
+fn parse_instruction(
+    source: &str,
+    ctx: Option<&mut HashMap<String, usize>>,
+) -> Result<Instruction, String> {
     let mut words = source.split_whitespace();
     let mnemonic = words.next().ok_or("expected an instruction")?;
     let op: Op = mnemonic.parse().map_err(|_| "unknown op")?;
 
     let operand = match words.next() {
-        Some(text) => text
-            .parse::<u16>()
-            .map_err(|_| format!("invalid operand {text:?}: expected 0..={OPERAND_MAX_VALUE}"))?,
+        Some(text) => {
+            let mut res: u16 = 0;
+            if let Some(c) = ctx {
+                if let Some(v) = c.get(text) {
+                    res = *v as u16
+                }
+            } else {
+                res = text
+                .parse::<u16>()
+                .map_err(|_| format!("invalid operand {text:?}: expected 0..={OPERAND_MAX_VALUE}"))?;
+            }
+            res
+        }
         None if op.requires_operand() => {
             return Err(format!("{mnemonic} requires an operand"));
         }
@@ -258,10 +272,30 @@ fn encode_instruction(i: Instruction) -> u16 {
     ((i.op as u16) << 12) | i.operand
 }
 
+fn parse_sym_instruction(
+    source: &str,
+    ctx: &mut HashMap<String, usize>,
+) -> Result<Option<Instruction>, String> {
+    let words: Vec<_> = source.split_whitespace().collect();
+    if let Some(x) = words.get(1) {
+        if *x == "=" {
+            let id = words[0];
+            let addr = words[2].parse::<usize>().unwrap();
+            ctx.insert(id.to_string(), addr);
+            return Ok(None);
+        }
+    }
+    parse_instruction(source, Some(ctx)).map(Some)
+}
+
+/// maintain a HashMap<str, usize> for id->addr
+/// when parsing operands, if the operand parses to int then ok, otherwise
+/// look up the string/id in the hashmap,
 fn assemble(source: &str) -> Result<[u8; N_RAM_WORDS], String> {
     let mut ram: [u8; N_RAM_WORDS] = [0; N_RAM_WORDS];
     let mut addr = 0;
 
+    let mut ctx: HashMap<String, usize> = HashMap::new();
     for (index, line) in source.lines().enumerate() {
         let line_number = index + 1;
         let code = line
@@ -279,9 +313,13 @@ fn assemble(source: &str) -> Result<[u8; N_RAM_WORDS], String> {
             ));
         }
 
-        let instr =
-            parse_instruction(code).map_err(|error| format!("line {line_number}: {error}"))?;
-        let ie = encode_instruction(instr);
+        let instr = parse_sym_instruction(code, &mut ctx)
+            .map_err(|error| format!("line {line_number}: {error}"))?;
+        println!("{:?}", instr);
+        if let None = instr {
+            continue;
+        }
+        let ie = encode_instruction(instr.unwrap());
         ram[addr..addr + 2].copy_from_slice(&ie.to_be_bytes());
         addr += 2;
     }
@@ -354,6 +392,18 @@ fn create_rom() -> [u32; N_ROM_WORDS] {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let project = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let source_path = std::env::args_os()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| project.join("programs/simple.txt"));
+
+    let ram_path = std::env::args_os()
+        .nth(2)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| project.join("rams_n_roms/RAM.txt"));
+
+
     let c = Control::DEFAULT
         .with_a_we(true)
         .with_bus_source(BusSource::Alu);
@@ -363,22 +413,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let rom = create_rom();
 
     // Resolve paths relative to Cargo.toml, regardless of the working directory.
-    let project = Path::new(env!("CARGO_MANIFEST_DIR"));
 
     save_memory(project.join("../ROM.txt"), &rom, 2, 4)?;
-    save_memory(project.join("ROM.txt"), &rom, 2, 4)?;
+    save_memory(project.join("rams_n_roms/ROM.txt"), &rom, 2, 4)?;
 
-    let source_path = std::env::args_os()
-        .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| project.join("programs/simple.txt"));
 
     let source = fs::read_to_string(source_path)?;
-
+    println!("{}", source);
     let ram = assemble(&source)?;
 
-    save_memory(project.join("../RAM.txt"), &ram, 2, 4)?;
-    save_memory(project.join("RAM.txt"), &ram, 2, 4)?;
+    save_memory(&ram_path, &ram, 2, 2)?;
+    save_memory(&ram_path, &ram, 2, 2)?;
 
     Ok(())
 }
