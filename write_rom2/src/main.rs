@@ -412,8 +412,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let rom = create_rom();
 
-    // Resolve paths relative to Cargo.toml, regardless of the working directory.
-
     save_memory(project.join("../ROM.txt"), &rom, 2, 4)?;
     save_memory(project.join("rams_n_roms/ROM.txt"), &rom, 2, 4)?;
 
