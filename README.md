@@ -1,3 +1,31 @@
+# tinycpu
+
+Compile a program from the repository root:
+
+```sh
+cargo run -- compile write_rom2/programs/symbolic_add.txt
+```
+
+This writes `RAM.txt` only. Regenerate the control ROM explicitly when changing microcode:
+
+```sh
+cargo run -- rom
+```
+
+Both commands accept `-o PATH` / `--output PATH`. Defaults are `RAM.txt` and
+`ROM.txt` in your current directory. Run `cargo run -- --help` for usage.
+
+To install the command and use it without `cargo run`:
+
+```sh
+cargo install --path write_rom2 --locked
+tinycpu compile write_rom2/programs/symbolic_add.txt -o RAM.txt
+tinycpu rom -o ROM.txt
+```
+
+The Rust tool is split into shared ISA types, a compiler, control-ROM generation,
+and memory-image output. See [the tool documentation](write_rom2/README.md).
+The legacy `write_rom` project has been removed; its source remains in Git history.
 
 # todo
 jmp

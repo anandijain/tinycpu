@@ -1,9 +1,10 @@
 [package]
-name = "write_rom2"
+name = "tinycpu"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 arbitrary-int = "2.2.0"
 bitbybit = "2.0.1"
+clap = { version = "4.5", features = ["derive"] }
 strum = { version = "0.28.0", features = ["derive"] }

@@ -1,0 +1,3 @@
+[workspace]
+members = ["write_rom2"]
+resolver = "3"

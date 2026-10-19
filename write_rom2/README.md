@@ -1,46 +1,82 @@
-at a high level this program needs to do two things
+# tinycpu tools
 
-1) take an assembly program and write the contents of ram to a hex-words file
-2) output the contents of ROM that is used to map the (opcode, inst_step, control_flags) -> control_lines used to implement the microinstructions/operations 
+The `tinycpu` CLI has independent commands for program compilation and control-ROM
+writing. Compiling programs does not regenerate or overwrite the control ROM.
 
+From the repository root:
 
+```sh
+# Compile assembly into RAM.txt in the current directory.
+cargo run -- compile write_rom2/programs/symbolic_add.txt
 
-Lda 0x123  
-inst_out, mar_in,
-mem_hi_we,
-mar_inc,
-ram_out, a_in
-inst_step_reset
+# Choose a different RAM output. Missing parent directories are created.
+cargo run -- compile write_rom2/programs/add_2_numbers.txt -o build/RAM.txt
 
-Sta 0x123 A: 0xABCD
-instr_out, mar_in
-a_out, ram_msb_we
-mar_inc, 
-a_out, ram_lsb_we
-inst_step_reset 
+# Only run this when the CPU's microcode changes.
+cargo run -- rom -o ROM.txt
 
+cargo run -- --help
+cargo run -- compile --help
+cargo run -- rom --help
+```
 
+`assemble` is an alias for `compile`. Both commands accept `-o` / `--output`.
+The defaults are `RAM.txt` and `ROM.txt`, relative to the current working directory.
+Each command writes exactly one image; there are no implicit duplicate writes.
+Source paths are also relative to the current directory. Compilation errors include
+source filenames and line numbers, exit unsuccessfully, and leave existing output
+untouched. The ROM command does not require a source program.
 
-## compiler levels
-### 1. 
-In the first level we call it "symbolic assembly"
-basically we have a way to tell the compiler at the start of the program certain addresses for variables. so x ADDR 4094 says that x's address in ram is 4094
+Install once to call the tool directly (reinstall after changing its Rust code):
 
-then in normal assembly instructions, instead of providing an address manually, we can refer to symbols that then get looked up during compilation
+```sh
+cargo install --path write_rom2 --locked
+tinycpu compile write_rom2/programs/symbolic_add.txt -o RAM.txt
+tinycpu rom -o ROM.txt
+```
 
-### 2 
-Now in 2.txt we abandon assembly and instead start assigning values to variables.
-So as the compiler goes along, if it sees an assignment operation like `x=5` 
-then it will look in a table to check if the identifier x already has a place in memory, if not it subtracts 2 bytes (or 1 word) from a counter and adds x to this table.
-so the program then emits (symbolic?) assembly code.
+## Code layout
 
-in a case liek x=5
-we write to the compilers Context{id: "x", addr: 4094}
-then we emit the instructions 
-LDI 5 
-STA 4094
+| File | Responsibility |
+| --- | --- |
+| `src/isa.rs` | Shared `Op`, `Instruction`, encoding, operand limits, and RAM dimensions |
+| `src/compiler.rs` | Parse assembly and symbol definitions; produce RAM bytes |
+| `src/rom.rs` | Control signals, bus sources, microinstruction sequences, and control-ROM generation |
+| `src/memory.rs` | Format and save Logisim memory images |
+| `src/main.rs` | Parse CLI arguments and run the selected operation |
+| `src/lib.rs` | Expose modules for reuse |
 
-then when we go to the next line we see that y=3 and add to context and emit
-LDI 3 STA 4092
+Both the compiler and ROM generator depend on `isa`; the compiler does not depend
+on ROM generation. File I/O happens outside the compiler. All tools remain in one
+Rust crate, with a workspace manifest and lockfile at the repository root.
 
-now here we see c = a + 1, so 
+## Current source language
+
+The compiler currently accepts assembly, decimal operands, semicolon comments,
+and named numeric addresses defined before use:
+
+```text
+x = 4094
+LDI 5
+STA x
+HLT
+```
+
+Here `x = 4094` is an assembler symbol definition, not a runtime assignment.
+Instructions occupy two bytes in big-endian order. RAM is byte-addressed with
+12-bit addresses; 16-bit data values occupy two bytes. High-level assignments,
+expressions, and control flow in `compiler_levels/` remain future work.
+
+The existing microcode is preserved. In particular, `SUB` still has placeholder
+NOP microcode; accepting the assembly mnemonic does not implement subtraction
+in the hardware.
+
+## Verification
+
+```sh
+cargo test --workspace --locked
+cargo fmt --all -- --check
+```
+
+The tests cover numeric and symbolic operands, invalid input, RAM capacity,
+independent CLI outputs, and equality with the checked-in control-ROM image.
