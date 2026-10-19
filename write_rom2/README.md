@@ -6,21 +6,23 @@ writing. Compiling programs does not regenerate or overwrite the control ROM.
 From the repository root:
 
 ```sh
-# Compile assembly into RAM.txt in the current directory.
-cargo run -- compile write_rom2/programs/symbolic_add.txt
+# Assemble instructions into RAM.txt in the current directory.
+cargo run -- assemble write_rom2/programs/symbolic_add.txt
 
 # Choose a different RAM output. Missing parent directories are created.
-cargo run -- compile write_rom2/programs/add_2_numbers.txt -o build/RAM.txt
+cargo run -- assemble write_rom2/programs/add_2_numbers.txt -o build/RAM.txt
 
 # Only run this when the CPU's microcode changes.
 cargo run -- rom -o ROM.txt
 
 cargo run -- --help
-cargo run -- compile --help
+cargo run -- assemble --help
 cargo run -- rom --help
 ```
 
-`assemble` is an alias for `compile`. Both commands accept `-o` / `--output`.
+`assemble` handles assembly programs. `compile` is reserved for the higher-level
+language being built in `compiler.rs`; it currently returns an error without
+writing an image. Both commands accept `-o` / `--output`.
 The defaults are `RAM.txt` and `ROM.txt`, relative to the current working directory.
 Each command writes exactly one image; there are no implicit duplicate writes.
 Source paths are also relative to the current directory. Compilation errors include
@@ -31,7 +33,7 @@ Install once to call the tool directly (reinstall after changing its Rust code):
 
 ```sh
 cargo install --path write_rom2 --locked
-tinycpu compile write_rom2/programs/symbolic_add.txt -o RAM.txt
+tinycpu assemble write_rom2/programs/symbolic_add.txt -o RAM.txt
 tinycpu rom -o ROM.txt
 ```
 
@@ -40,7 +42,8 @@ tinycpu rom -o ROM.txt
 | File | Responsibility |
 | --- | --- |
 | `src/isa.rs` | Shared `Op`, `Instruction`, encoding, operand limits, and RAM dimensions |
-| `src/compiler.rs` | Parse assembly and symbol definitions; produce RAM bytes |
+| `src/assembler.rs` | Parse assembly and symbol definitions; produce RAM bytes |
+| `src/compiler.rs` | Higher-level language compiler, being rebuilt incrementally |
 | `src/rom.rs` | Control signals, bus sources, microinstruction sequences, and control-ROM generation |
 | `src/memory.rs` | Format and save Logisim memory images |
 | `src/main.rs` | Parse CLI arguments and run the selected operation |
@@ -52,7 +55,7 @@ Rust crate, with a workspace manifest and lockfile at the repository root.
 
 ## Current source language
 
-The compiler currently accepts assembly, decimal operands, semicolon comments,
+The assembler currently accepts assembly, decimal operands, semicolon comments,
 and named numeric addresses defined before use:
 
 ```text

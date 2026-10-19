@@ -1,7 +1,7 @@
 use std::{fs, io, path::PathBuf, process::ExitCode};
 
 use clap::{Parser, Subcommand};
-use tinycpu::{compiler::assemble, memory::save_memory, rom::create_rom};
+use tinycpu::{assembler::assemble, compiler, memory::save_memory, rom::create_rom};
 
 #[derive(Parser)]
 #[command(
@@ -17,9 +17,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Compile assembly into a RAM image. Does not generate or write the control ROM.
-    #[command(alias = "assemble")]
-    Compile {
+    Assemble {
         /// Assembly source, with optional NAME = ADDRESS definitions
+        source: PathBuf,
+        /// RAM image to write, relative to the current directory
+        #[arg(short, long, default_value = "RAM.txt")]
+        output: PathBuf,
+    },
+    /// Compile the higher-level language (not implemented yet)
+    Compile {
+        /// Higher-level source program
         source: PathBuf,
         /// RAM image to write, relative to the current directory
         #[arg(short, long, default_value = "RAM.txt")]
@@ -35,7 +42,7 @@ enum Command {
 
 fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
-        Command::Compile { source, output } => {
+        Command::Assemble { source, output } => {
             let text = fs::read_to_string(&source)
                 .map_err(|error| format!("could not read {}: {error}", source.display()))?;
             let ram = assemble(&text).map_err(|error| format!("{}: {error}", source.display()))?;
@@ -46,6 +53,13 @@ fn run(cli: Cli) -> Result<(), String> {
             let rom = create_rom();
             save_memory(&output, &rom, 2, 4).map_err(|error| output_error(&output, error))?;
             println!("Wrote control ROM to {}", output.display());
+        }
+        Command::Compile { source, output } => {
+            let text = fs::read_to_string(&source)
+                .map_err(|error| format!("could not read {}: {error}", source.display()))?;
+            let ram = compiler::compile(&text).unwrap();
+            save_memory(&output, &ram, 2, 2).map_err(|error| output_error(&output, error))?;
+            println!("Wrote RAM image to {}", output.display());
         }
     }
     Ok(())

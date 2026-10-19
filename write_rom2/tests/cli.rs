@@ -40,11 +40,11 @@ fn cli_keeps_ram_and_rom_generation_independent() {
     fs::write(dir.0.join("program.asm"), "x = 4094\nLDI 5\nSTA x\nHLT\n").unwrap();
     fs::write(dir.0.join("ROM.txt"), "existing control ROM").unwrap();
 
-    let compile = dir.run(&["compile", "program.asm"]);
+    let assembled = dir.run(&["assemble", "program.asm"]);
     assert!(
-        compile.status.success(),
+        assembled.status.success(),
         "{}",
-        String::from_utf8_lossy(&compile.stderr)
+        String::from_utf8_lossy(&assembled.stderr)
     );
     let ram = fs::read(dir.0.join("RAM.txt")).unwrap();
     assert!(String::from_utf8_lossy(&ram).contains("00: 50 05 4f fe f0 00"));
@@ -53,12 +53,12 @@ fn cli_keeps_ram_and_rom_generation_independent() {
         "existing control ROM"
     );
 
-    let custom = dir.run(&["compile", "program.asm", "-o", "nested/custom-ram.txt"]);
+    let custom = dir.run(&["assemble", "program.asm", "-o", "nested/custom-ram.txt"]);
     assert!(custom.status.success());
     assert_eq!(fs::read(dir.0.join("nested/custom-ram.txt")).unwrap(), ram);
 
     fs::write(dir.0.join("bad.asm"), "LDA undefined\n").unwrap();
-    let failed = dir.run(&["compile", "bad.asm"]);
+    let failed = dir.run(&["assemble", "bad.asm"]);
     assert!(!failed.status.success());
     assert!(String::from_utf8_lossy(&failed.stderr).contains("bad.asm: line 1:"));
     assert_eq!(fs::read(dir.0.join("RAM.txt")).unwrap(), ram);
@@ -98,9 +98,10 @@ fn help_and_invalid_arguments_do_not_create_images() {
     let help = dir.run(&["--help"]);
     assert!(help.status.success());
     let text = String::from_utf8_lossy(&help.stdout);
-    assert!(text.contains("compile") && text.contains("rom"));
+    assert!(text.contains("assemble") && text.contains("compile") && text.contains("rom"));
     for args in [
         &[][..],
+        &["assemble"][..],
         &["compile"][..],
         &["rom", "--output"][..],
         &["unknown"][..],
