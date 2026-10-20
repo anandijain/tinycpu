@@ -1,0 +1,9 @@
+x = 4094
+Ldi 1
+Sta x
+%0 = 4092
+Ldi 2
+Sta %0
+Lda %0
+Add x
+Hlt 0

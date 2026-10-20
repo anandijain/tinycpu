@@ -1,0 +1,6 @@
+x = 4094
+Ldi 1
+Sta x
+Ldi 2
+Sta x
+Hlt 0

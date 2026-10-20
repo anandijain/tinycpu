@@ -1,0 +1,8 @@
+x = 4094
+ldi 1
+sta x
+y = 4092
+ldi 2 
+sta y
+lda x
+add y

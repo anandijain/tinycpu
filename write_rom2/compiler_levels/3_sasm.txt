@@ -1,0 +1,24 @@
+a = 4094
+LDI 5
+STA a
+b = 4092
+LDI 3 
+STA b 
+c = 4090
+%1 = 4088
+LDI 1
+STA %1
+LDA a
+ADD %1
+STA c
+d = 4086
+%2 = 4084
+LDI 2
+STA %2 
+LDA %2
+ADD b
+STA d
+e = 4082
+LDA c
+ADD d
+STA e

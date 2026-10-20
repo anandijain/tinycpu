@@ -1,6 +1,5 @@
-use std::{fs, io, path::PathBuf, process::ExitCode};
-
 use clap::{Parser, Subcommand};
+use std::{fs, io, path::PathBuf, process::ExitCode};
 use tinycpu::{assembler::assemble, compiler, memory::save_memory, rom::create_rom};
 
 #[derive(Parser)]
@@ -24,13 +23,14 @@ enum Command {
         #[arg(short, long, default_value = "RAM.txt")]
         output: PathBuf,
     },
-    /// Compile the higher-level language (not implemented yet)
+    /// Compile a program into symbolic assembly and a Logisim RAM image
     Compile {
         /// Higher-level source program
         source: PathBuf,
-        /// RAM image to write, relative to the current directory
-        #[arg(short, long, default_value = "RAM.txt")]
-        output: PathBuf,
+        /// RAM output (defaults to the source path with a .ram extension).
+        /// Symbolic assembly is always written beside the source as .sasm.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
     /// Generate the control ROM after changing the CPU's microcode
     Rom {
@@ -55,9 +55,22 @@ fn run(cli: Cli) -> Result<(), String> {
             println!("Wrote control ROM to {}", output.display());
         }
         Command::Compile { source, output } => {
+            let sasm_output = source.with_extension("sasm");
+            let output = output.unwrap_or_else(|| source.with_extension("ram"));
+            if source == sasm_output || source == output || sasm_output == output {
+                return Err(
+                    "source, symbolic assembly, and RAM output paths must be different".into(),
+                );
+            }
             let text = fs::read_to_string(&source)
                 .map_err(|error| format!("could not read {}: {error}", source.display()))?;
-            let ram = compiler::compile(&text).unwrap();
+            let sym_asm = compiler::compile(&text)
+                .map_err(|error| format!("{}: {error}", source.display()))?;
+            fs::write(&sasm_output, &sym_asm).map_err(|error| output_error(&sasm_output, error))?;
+            println!("Wrote symbolic assembly to {}", sasm_output.display());
+
+            let ram = assemble(&sym_asm)
+                .map_err(|error| format!("{}: {error}", sasm_output.display()))?;
             save_memory(&output, &ram, 2, 2).map_err(|error| output_error(&output, error))?;
             println!("Wrote RAM image to {}", output.display());
         }

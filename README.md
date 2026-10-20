@@ -3,23 +3,26 @@
 Compile a program from the repository root:
 
 ```sh
-cargo run -- compile write_rom2/programs/symbolic_add.txt
+cargo run --release -- compile write_rom2/programs/1/1.aj
 ```
 
-This writes `RAM.txt` only. Regenerate the control ROM explicitly when changing microcode:
+This writes `1.sasm` (symbolic assembly) and `1.ram` (Logisim hex words) beside
+`1.aj`, in `write_rom2/programs/1/`. Each program keeps its source and generated
+files together. Regenerate the control ROM explicitly when changing microcode:
 
 ```sh
 cargo run -- rom
 ```
 
-Both commands accept `-o PATH` / `--output PATH`. Defaults are `RAM.txt` and
-`ROM.txt` in your current directory. Run `cargo run -- --help` for usage.
+`compile -o PATH` overrides the RAM output; symbolic assembly stays beside the
+source. `assemble` accepts existing symbolic assembly and defaults to `RAM.txt`.
+`rom` defaults to `ROM.txt`. Run `cargo run -- --help` for usage.
 
 To install the command and use it without `cargo run`:
 
 ```sh
 cargo install --path write_rom2 --locked
-tinycpu compile write_rom2/programs/symbolic_add.txt -o RAM.txt
+tinycpu compile write_rom2/programs/1/1.aj
 tinycpu rom -o ROM.txt
 ```
 
