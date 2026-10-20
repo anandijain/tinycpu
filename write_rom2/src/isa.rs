@@ -26,8 +26,10 @@ pub enum Op {
     Ldi = 5,
     /// (JMP addr) set the program counter to addr
     Jmp = 6,
-    /// (JMP addr) conditionally jump the PC to addr if the alu output is zero
+    /// (JMP addr) conditionally jump the PC to addr if the A register is zero
     Jz = 7,
+    /// (MUL addr) multiply the contents of A with the value stored at addr, store back in A
+    Mul = 8,
     ///
     Hlt = 15,
 }
@@ -35,6 +37,14 @@ pub enum Op {
 impl Op {
     pub fn requires_operand(self) -> bool {
         !matches!(self, Self::Nop | Self::Hlt)
+    }
+
+    pub fn from_src_sym(s: &str) -> Option<Self> {
+        match s {
+            "+" => Some(Op::Add),
+            "*" => Some(Op::Mul),
+            _ => None
+        }
     }
 }
 

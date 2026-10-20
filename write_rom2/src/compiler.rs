@@ -19,7 +19,7 @@ peg::parser! {
         pub rule digit() -> char = ['0'..='9']
         pub rule int() -> u16 = n:$(digit()+) {? n.parse::<u16>().map_err(|_| "wtf")}
 
-        pub rule char() -> char = ['a'..='z' | 'A'..='Z' | '=' | '+']
+        pub rule char() -> char = ['a'..='z' | 'A'..='Z' | '=' | '+' | '*']
         pub rule sym() -> String = s:$(char()+) {s.to_owned()}
 
         pub rule atom() -> Expr = n:int() {Expr::Int(n)} / s:sym() {Expr::Sym(s)}
@@ -28,6 +28,7 @@ peg::parser! {
         pub rule exprs() -> Vec<Expr> =  ws() exs:expr()++ws1() ws() {exs}
     }
 }
+
 #[derive(Debug)]
 struct Ctx {
     addr_table: HashMap<String, usize>,
@@ -91,172 +92,6 @@ fn define_intermediate(ctx: &mut Ctx) -> (String, SasmInst) {
     ctx.next_intermediate += 1;
     (var, inst)
 }
-/// the compiler will read simple s_exprs like in 3.aj and convert that into symbolic assembly
-/// then the assembler will convert the symbolic assembly to assembly
-pub fn compile(source: &str) -> Result<String, String> {
-    let mut ctx = Ctx {
-        addr_table: HashMap::new(),
-        next_addr: 4094,
-        next_intermediate: 0,
-    };
-
-    let exprs = parser::exprs(source).map_err(|_| "failed to parse")?;
-    let mut sym_asm_instructions = vec![];
-    for expr in exprs {
-        match expr {
-            Expr::Int(n) => {
-                // if i see a plain int in the program, i can naively add this immediate to the addr_table[%(next_intermediate)] @ next_addr,
-                // increment next_intermediate, decr next_addr by word width
-                // emit
-                // LDI $n
-                // STA %next_intermediate
-                // ctx.addr_table
-                //     .insert(format!("%{}", ctx.next_intermediate), ctx.next_addr);
-                let var = format!("%{}", ctx.next_intermediate);
-                let mut insts = vec![
-                    SasmInst::MemAssign((var.clone(), ctx.next_addr)),
-                    SasmInst::Asm(SInstr {
-                        op: Op::Ldi,
-                        operand: Operand::Int(n),
-                    }),
-                    SasmInst::Asm(SInstr {
-                        op: Op::Sta,
-                        operand: Operand::Sym(var.clone()),
-                    }),
-                ];
-                ctx.next_addr -= 2;
-                ctx.next_intermediate += 1;
-                sym_asm_instructions.append(&mut insts);
-            }
-            Expr::Sym(x) => {
-                let inst = SasmInst::Asm(SInstr {
-                    op: Op::Lda,
-                    operand: Operand::Sym(x),
-                });
-                sym_asm_instructions.push(inst);
-            }
-            Expr::List(args) => {
-                // im just assuming all lists are of the form (= x 1)
-                let f = &args[0];
-
-                let mut insts = vec![];
-                match f {
-                    Expr::Sym(fsym) if fsym == "=" => {
-                        let Expr::Sym(to_assign) = &args[1] else {
-                            panic!("assignment var must be a symbol, not an int");
-                        };
-                        let val = &args[2];
-                        if !ctx.addr_table.contains_key(to_assign) {
-                            ctx.addr_table.insert(to_assign.to_string(), ctx.next_addr);
-                            insts.push(SasmInst::MemAssign((to_assign.clone(), ctx.next_addr)));
-                            ctx.next_addr -= 2;
-                        }
-                        let ld = match val {
-                            Expr::Int(n) => SasmInst::Asm(SInstr {
-                                op: Op::Ldi,
-                                operand: Operand::Int(*n),
-                            }),
-                            Expr::Sym(x) => SasmInst::Asm(SInstr {
-                                op: Op::Lda,
-                                operand: Operand::Sym(x.to_string()),
-                            }),
-                            _ => panic!("no nesting yet"),
-                        };
-                        let st = SasmInst::Asm(SInstr {
-                            op: Op::Sta,
-                            operand: Operand::Sym(to_assign.to_string()),
-                        });
-                        insts.push(ld);
-                        insts.push(st);
-                        sym_asm_instructions.append(&mut insts)
-                    }
-                    Expr::Sym(fsym) if fsym == "+" => {
-                        let arg1 = &args[1];
-                        let arg2 = &args[2];
-                        match (arg1, arg2) {
-                            (Expr::Int(n1), Expr::Int(n2)) => {
-                                let (var_n1, def1) = define_intermediate(&mut ctx);
-                                let (var_n2, def2) = define_intermediate(&mut ctx);
-                                insts.extend([
-                                    def1,
-                                    asm(Op::Ldi, *n1),
-                                    asm(Op::Sta, var_n1.as_str()),
-                                    def2,
-                                    asm(Op::Ldi, *n2),
-                                    asm(Op::Sta, var_n2.as_str()),
-                                    asm(Op::Lda, var_n1.as_str()),
-                                    asm(Op::Add, var_n2.as_str()),
-                                ]);
-                                /*
-                                memassign a new intermediate to n1, then do a ldi n1 sta %x
-                                then same for n2 to %y
-                                then lda %x, add %y
-                                 */
-                                sym_asm_instructions.extend(insts);
-                            }
-                            (Expr::Int(n1), Expr::Sym(x1)) => {
-                                /*
-                                memassign for n1 to %n1 then ldi n1 sta %n1, then here we
-                                assume that x1 already has an assignment so we just emit lda %n1 add x1
-                                 */
-                                let (var_n1, def1) = define_intermediate(&mut ctx);
-                                insts.extend([
-                                    def1,
-                                    asm(Op::Ldi, *n1),
-                                    asm(Op::Sta, var_n1.as_str()),
-                                    asm(Op::Lda, var_n1.as_str()),
-                                    asm(Op::Add, x1.as_str()),
-                                ]);
-                                sym_asm_instructions.extend(insts);
-
-                            }
-                            (Expr::Sym(x1), Expr::Int(n1)) => {
-                                /*same as (int, sym) */
-
-                                let (var_n1, def1) = define_intermediate(&mut ctx);
-                                insts.extend([
-                                    def1,
-                                    asm(Op::Ldi, *n1),
-                                    asm(Op::Sta, var_n1.as_str()),
-                                    asm(Op::Lda, x1.as_str()),
-                                    asm(Op::Add, var_n1.as_str()),
-                                ]);
-                                sym_asm_instructions.extend(insts);
-
-                            }
-                            (Expr::Sym(x1), Expr::Sym(x2)) => {
-
-                                /*
-                                lda x1
-                                add x2
-                                 */
-                                insts.extend([
-                                    asm(Op::Lda, x1.as_str()),
-                                    asm(Op::Add, x2.as_str())
-                                ]);
-                                sym_asm_instructions.extend(insts);
-
-                            }
-                            _ => panic!("nested expressions not supported")
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-    let hlt = SasmInst::Asm(SInstr {
-        op: Op::Hlt,
-        operand: Operand::Int(0),
-    });
-    sym_asm_instructions.push(hlt);
-    Ok(sym_asm_instructions
-        .iter()
-        .map(|asm| render_sasm(asm))
-        .collect::<Vec<_>>()
-        .join("\n"))
-    // Ok(sym_asm_instructions)
-}
 
 fn render_sasm(sasm: &SasmInst) -> String {
     match sasm {
@@ -265,4 +100,106 @@ fn render_sasm(sasm: &SasmInst) -> String {
         }
         SasmInst::MemAssign((id, addr)) => format!("{id} = {addr}"),
     }
+}
+
+fn render_sasms(insts: &Vec<SasmInst>) -> String {
+    insts
+        .iter()
+        .map(|inst| render_sasm(inst))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// the main result of compile_expr is that the A register will hold the value resulting in `expr`'s compilation
+fn compile_expr(expr: &Expr, ctx: &mut Ctx, insts: &mut Vec<SasmInst>) -> Result<(), String> {
+    match expr {
+        Expr::Int(n) => {
+            insts.push(asm(Op::Ldi, *n));
+        }
+        Expr::Sym(x) => {
+            // should a compile error be thrown if x does not exist in addr_table
+            if !ctx.addr_table.contains_key(x) {
+                let err_str = format!("undef var {x} in {expr:?}");
+                return Err(err_str);
+            }
+            insts.push(asm(Op::Lda, x.as_str()));
+        }
+        Expr::List(exs) => {
+            let n_exs = exs.len();
+            if n_exs != 3 {
+                return Err(format!(
+                    "Lists are only length 3 for now (binary ops) {:?}",
+                    expr
+                ));
+            }
+            match &exs[0] {
+                // (3) => 3 => ldi 3
+                // (3) => err because 3 is not a function
+
+                // (x y z) too hard for rn
+                Expr::Int(_) => return Err(format!("List head cannot be Int in {:?}", exs[0])),
+                Expr::Sym(x) => {
+                    match x.as_str() {
+                        "=" => {
+                            // (= ex1 ex2)
+                            let ex1 = &exs[1];
+                            let Expr::Sym(ex1_sym) = ex1 else {
+                                return Err(format!(
+                                    "Assignments must only be to Expr::Sym, so no (= 1 2) and no (= (+ x y) z)"
+                                ));
+                            };
+
+                            compile_expr(&exs[2], ctx, insts)?;
+                            // ex2 is in the A register
+                            if ctx.addr_table.contains_key(ex1_sym) {
+                                insts.push(asm(Op::Sta, ex1_sym.as_str()))
+                            } else {
+                                insts.push(define(ex1_sym, ctx));
+                                insts.push(asm(Op::Sta, ex1_sym.as_str()))
+                            }
+                        }
+                        "+" | "*" => {
+                            let op = Op::from_src_sym(x).ok_or_else(|| {
+                                format!("{x} is not a recognized built in operation")
+                            })?;
+                            // (+ ex1 ex2)
+                            compile_expr(&exs[1], ctx, insts)?;
+                            let (var, inst) = define_intermediate(ctx);
+                            insts.push(inst);
+                            insts.push(asm(Op::Sta, var.as_str()));
+                            compile_expr(&exs[2], ctx, insts)?;
+
+                            insts.push(asm(op, var.as_str()));
+                        }
+                        _ => {
+                            let x: u64 = 1;
+                            let y: u64 = 2;
+                            let z = x * y;
+                            return Err(format!(
+                                "List heads must be built in symbols + or =, not {x} in {:?}",
+                                exs[0]
+                            ));
+                        }
+                    }
+                }
+                Expr::List(_) => return Err("List head cannot be List".to_string()),
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn compile(source: &str) -> Result<String, String> {
+    let exprs = parser::exprs(source).map_err(|e| e.to_string())?;
+    let mut ctx = Ctx {
+        addr_table: HashMap::new(),
+        next_addr: N_RAM_WORDS - 2,
+        next_intermediate: 0,
+    };
+    let mut insts = vec![];
+    for expr in exprs {
+        compile_expr(&expr, &mut ctx, &mut insts)?;
+    }
+    insts.push(asm(Op::Hlt, 0));
+    Ok(render_sasms(&insts))
 }

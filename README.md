@@ -31,12 +31,11 @@ and memory-image output. See [the tool documentation](write_rom2/README.md).
 The legacy `write_rom` project has been removed; its source remains in Git history.
 
 # todo
-jmp
-cond jmp/ turing completeness
+MUL
+fix cond jmp/ turing completeness
 SUB
 more alu stuff
-how to deal with instructions longer than word size, in other words, increase the size of ram 
-
+jmp in `aj`
 
 adder
 C A B | Ca Sum
@@ -171,4 +170,16 @@ alu_out, a_in
 
 
 ## expanding the size of ram 
+
+
+
+## mul
+
+max val for n bit uint 
+2^n-1 
+
+max val for 2 n bits multiplied together
+(2^n-1)(2^n-1)
+2^(2n) -2 * (2^n) + 1
+2^(2n) - 2^(n+1) + 1
 

@@ -38,6 +38,11 @@ enum Command {
         #[arg(short, long, default_value = "ROM.txt")]
         output: PathBuf,
     },
+    CompileSource {
+        source: String,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn run(cli: Cli) -> Result<(), String> {
@@ -73,6 +78,15 @@ fn run(cli: Cli) -> Result<(), String> {
                 .map_err(|error| format!("{}: {error}", sasm_output.display()))?;
             save_memory(&output, &ram, 2, 2).map_err(|error| output_error(&output, error))?;
             println!("Wrote RAM image to {}", output.display());
+        }
+        Command::CompileSource { source, output } => {
+            let sasm = compiler::compile(&source)?;
+            println!("{}", sasm);
+            if let Some(out) = output {
+                let ram = assemble(&sasm)?;
+                save_memory(&out, &ram, 2, 2).map_err(|error| output_error(&out, error))?;
+                println!("Wrote RAM image to {}", out.display());
+            }
         }
     }
     Ok(())

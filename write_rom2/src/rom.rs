@@ -54,6 +54,7 @@ static ADD_STEPS: &[Control] = &[
         .with_b_we(true),
     Control::DEFAULT
         .with_bus_source(BusSource::Alu)
+        .with_alu_source(AluSource::Add)
         .with_a_we(true),
     END,
 ];
@@ -98,6 +99,21 @@ static JZ_STEPS: &[Control] = &[
     END,
 ];
 
+static MUL_STEPS: &[Control] = &[
+    Control::DEFAULT
+        .with_bus_source(BusSource::Inst)
+        .with_mar_bus_we(true),
+    Control::DEFAULT.with_mem_hi_we(true),
+    Control::DEFAULT.with_mar_inc(true),
+    Control::DEFAULT
+        .with_bus_source(BusSource::Ram)
+        .with_b_we(true),
+    Control::DEFAULT
+        .with_alu_source(AluSource::Mul)
+        .with_bus_source(BusSource::Alu)
+        .with_a_we(true),
+];
+
 static HLT_STEPS: &[Control] = &[Control::DEFAULT.with_hlt(true)];
 
 #[bitenum(u3, exhaustive = true)]
@@ -110,6 +126,12 @@ pub enum BusSource {
     Pc = 5,
     Inst = 6,
     Man = 7,
+}
+
+#[bitenum(u1, exhaustive = true)]
+pub enum AluSource {
+    Add = 0,
+    Mul = 1,
 }
 
 #[bitfield(u32, default = 0, forbid_overlaps)]
@@ -154,6 +176,8 @@ pub struct Control {
     mem_hi_we: bool,
     #[bit(18, rw)]
     mem_hi_rst: bool,
+    #[bits(19..=19,rw)]
+    alu_source: AluSource,
 }
 
 fn execution_steps(op: Op) -> &'static [Control] {
@@ -166,6 +190,7 @@ fn execution_steps(op: Op) -> &'static [Control] {
         Op::Ldi => LDI_STEPS,
         Op::Jmp => JMP_STEPS,
         Op::Jz => JZ_STEPS,
+        Op::Mul => MUL_STEPS,
         Op::Hlt => HLT_STEPS,
     }
 }
