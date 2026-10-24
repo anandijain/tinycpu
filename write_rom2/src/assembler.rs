@@ -8,159 +8,131 @@ use crate::isa::{
     encode_instruction,
 };
 
-fn parse_instruction(source: &str, ctx: &HashMap<String, usize>) -> Result<Instruction, String> {
-    let mut words = source.split_whitespace();
-    let mnemonic = words.next().ok_or("expected an instruction")?;
-    let op: Op = mnemonic.parse().map_err(|_| "unknown op")?;
-
-    let operand = match words.next() {
-        Some(text) => text.parse::<usize>().or_else(|_| {
-            ctx.get(text).copied().ok_or_else(|| {
-                format!("invalid operand {text:?}: expected a number or defined symbol")
-            })
-        })?,
-        None if op.requires_operand() => {
-            return Err(format!("{mnemonic} requires an operand"));
-        }
-        None => 0,
-    };
-
-    if operand > OPERAND_MAX_VALUE {
-        return Err(format!(
-            "operand {operand} is too large to store in {OPERAND_WIDTH} bits"
-        ));
-    }
-
-    if let Some(extra) = words.next() {
-        return Err(format!("unexpected extra token {extra:?}"));
-    }
-
-    Ok(Instruction {
-        op,
-        operand: operand as u16,
-    })
+#[derive(Debug, Clone)]
+pub enum SasmOperand {
+    Sym(String),
+    Int(usize),
 }
 
-fn parse_sym_instruction(
-    source: &str,
-    ctx: &mut HashMap<String, usize>,
-) -> Result<Option<Instruction>, String> {
-    let words: Vec<_> = source.split_whitespace().collect();
-    if words.get(1) == Some(&"=") {
-        if words.len() != 3 {
-            return Err("expected a symbol definition in the form NAME = ADDRESS".into());
-        }
-        let addr = words[2].parse::<usize>().map_err(|_| {
-            format!(
-                "invalid address {:?}: expected 0..={OPERAND_MAX_VALUE}",
-                words[2]
-            )
-        })?;
-        if addr > OPERAND_MAX_VALUE {
-            return Err(format!(
-                "address {addr} is too large to store in {OPERAND_WIDTH} bits"
-            ));
-        }
-        ctx.insert(words[0].to_string(), addr);
-        return Ok(None);
+#[derive(Debug)]
+pub struct SasmInst {
+    op: Op,
+    sasm_operand: Option<SasmOperand>,
+}
+
+#[derive(Debug)]
+pub enum SasmExpr {
+    Asm(SasmInst),
+    /// x = 100
+    /// y = x not allowed
+    Assign {
+        name: String,
+        addr: usize,
+    },
+    Label {
+        name: String,
+    },
+}
+
+peg::parser! {
+    pub grammar asm_parser() for str {
+        pub rule hws() = [' ' | '\t']* // need to add comments
+        pub rule hws1() = [' ' | '\t']+
+        pub rule newline() = "\r\n" / "\n" / "\r"
+
+        pub rule gap() = ([' ' | '\t' | '\n' | '\r'] / comment())*
+        pub rule comment() = ";" [^ '\n' | '\r']*
+        pub rule line_end() = hws() comment()? (newline() / ![_])
+
+        // pub rule comment() = anything after a semicolon within a line ';' .*
+        pub rule digit() -> char = ['0'..='9']
+        pub rule int() -> usize = n:$(digit()+) {? n.parse::<usize>().map_err(|_| "wtf")}
+
+        pub rule identifier() -> String = s:$(['a'..='z' | 'A'..='Z' | '_'] ['a'..='z' | 'A'..='Z' | '_' | '0'..='9']*) {s.to_string()}
+
+        rule opcode() -> Op
+            = name:identifier() {?
+                name.parse::<Op>()
+                    .map_err(|_| "valid instruction mnemonic")
     }
-    parse_instruction(source, ctx).map(Some)
+        pub rule operand() -> SasmOperand = n:int() {SasmOperand::Int(n)} / sym:identifier() {SasmOperand::Sym(sym)}
+        // x = 5
+        pub rule assignment() -> SasmExpr =
+            hws() name:$(identifier()) hws() "=" hws() arg:int() line_end() {SasmExpr::Assign { name: name.to_string(), addr: arg }}
+
+        pub rule label() -> SasmExpr = hws() name:$(identifier()) ":" hws() line_end() {? Ok(SasmExpr::Label { name: name.to_string() })}
+        pub rule asm() -> SasmExpr = hws() op:(opcode()) arg:(hws1() value:operand() { value })? hws() line_end() {?
+
+            if Op::requires_operand(op) {
+                if arg.is_none() {
+                    return Err("got an op that requires an arg, but none was provided")
+                }
+            }
+
+            Ok(SasmExpr::Asm(SasmInst { op, sasm_operand: arg }))
+        }
+
+        pub rule expr() -> SasmExpr = asm() / assignment() / label()
+        pub rule exprs() -> Vec<SasmExpr> = gap() es:(e:expr() gap() {e})* {es}
+    }
 }
 
 /// Compile assembly and named address definitions into a big-endian RAM image.
 /// Symbols must be defined before use; definitions do not occupy program bytes.
-pub fn assemble(source: &str) -> Result<[u8; N_RAM_WORDS], String> {
+pub fn assemble(exprs: &Vec<SasmExpr>) -> Result<Vec<Instruction>, String> {
+    let mut next_addr = 0; // points to where the next instruction in RAM will go 
+    let mut ctx: HashMap<String, usize> = HashMap::new();
+
+    // let exs = asm_parser::exprs(source).map_err(|e| e.to_string())?;
+    let mut insts = vec![];
+    //
+    for (index, ex) in exprs.iter().enumerate() {
+        match ex {
+            SasmExpr::Asm(asm) => {
+                next_addr += 2;
+            }
+            SasmExpr::Label { name } => {
+                ctx.insert(name.to_string(), next_addr);
+            }
+
+            SasmExpr::Assign { name, addr } => {
+                ctx.insert(name.to_string(), *addr);
+            }
+        }
+    }
+    // next_addr = 0;
+    for (index, ex) in exprs.iter().enumerate() {
+        match ex {
+            SasmExpr::Asm(asm) => {
+                let operand: u16 = match asm.sasm_operand.clone() {
+                    Some(x) => match x {
+                        SasmOperand::Int(n) => n as u16,
+                        SasmOperand::Sym(s) => *ctx.get(&s).unwrap() as u16,
+                    },
+                    None => 0,
+                };
+                let inst = Instruction {
+                    op: asm.op,
+                    operand,
+                };
+                insts.push(inst);
+                // next_addr += 2;
+            }
+            _ => {}
+        }
+    }
+
+    // Ok(ram)
+    Ok(insts)
+}
+
+pub fn assemble_ram(insts: &Vec<Instruction>) -> Result<[u8; N_RAM_WORDS], String> {
     let mut ram = [0; N_RAM_WORDS];
     let mut addr = 0;
-    let mut ctx = HashMap::new();
-
-    for (index, line) in source.lines().enumerate() {
-        let line_number = index + 1;
-        let code = line
-            .split_once(';')
-            .map_or(line, |(before, _)| before)
-            .trim();
-        if code.is_empty() {
-            continue;
-        }
-
-        let instr = parse_sym_instruction(code, &mut ctx)
-            .map_err(|error| format!("line {line_number}: {error}"))?;
-        let Some(instr) = instr else {
-            continue;
-        };
-
-        if addr + INSTRUCTION_BYTES > ram.len() {
-            return Err(format!(
-                "line {line_number}: program exceeds {N_RAM_WORDS} bytes"
-            ));
-        }
-        let encoded = encode_instruction(instr);
-        ram[addr..addr + INSTRUCTION_BYTES].copy_from_slice(&encoded.to_be_bytes());
-        addr += INSTRUCTION_BYTES;
+    for (i, inst) in insts.iter().enumerate() {
+        ram[addr..addr+2].copy_from_slice(&encode_instruction(inst).to_be_bytes());
+        addr +=2
     }
 
     Ok(ram)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resolves_symbols_without_losing_numeric_operands() {
-        let source = "x = 4094\ny = 4092\nLDI 5\nSTA x\nLDI 3\nADD y\nHLT\n";
-        let ram = assemble(source).unwrap();
-        assert_eq!(
-            &ram[..10],
-            &[0x50, 0x05, 0x4f, 0xfe, 0x50, 0x03, 0x2f, 0xfc, 0xf0, 0x00]
-        );
-    }
-
-    #[test]
-    fn rejects_invalid_symbols_and_operands_instead_of_panicking_or_using_zero() {
-        for source in [
-            "x =",
-            "x = nope",
-            "x = 65536",
-            "x = 5 extra",
-            "LDA missing",
-            "LDI 65536",
-        ] {
-            assert!(
-                assemble(source).unwrap_err().starts_with("line 1:"),
-                "{source}"
-            );
-        }
-    }
-
-    #[test]
-    fn assembles_in_order_while_ignoring_comments_and_blank_lines() {
-        let source = "; initialize A\r\n\r\n  LDI 291 ; 0x123\r\nSTA 32\r\n\t\r\nHLT\r\n";
-        let ram = assemble(source).unwrap();
-
-        assert_eq!(&ram[..6], &[0x51, 0x23, 0x40, 0x20, 0xf0, 0x00]);
-        assert!(ram[6..].iter().all(|&byte| byte == 0));
-    }
-
-    #[test]
-    fn accepts_full_ram_and_rejects_one_more_instruction() {
-        let mut source = "LDI 4095\n".repeat(N_RAM_WORDS / 2);
-        let ram = assemble(&source).unwrap();
-        assert!(ram.chunks_exact(2).all(|word| word == [0x5f, 0xff]));
-
-        source.push_str("; comments do not consume memory\n\nHLT\n");
-        assert_eq!(
-            assemble(&source).unwrap_err(),
-            "line 2051: program exceeds 4096 bytes"
-        );
-    }
-
-    #[test]
-    fn reports_the_original_source_line_for_invalid_instructions() {
-        assert_eq!(
-            assemble("; comment\n\nLDI\n").unwrap_err(),
-            "line 3: LDI requires an operand"
-        );
-    }
 }

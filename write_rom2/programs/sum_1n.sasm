@@ -1,0 +1,30 @@
+i = 1000
+n = 1002
+sum = 1004
+
+      ldi 1
+      sta i
+      ldi 11
+      sta n
+      ldi 0
+      sta sum
+
+
+loop:
+      ; check if i == n, if it is, jump to end 
+      lda i
+      ldb n ; cmp will load into b the argument, then it will latch into a register if a == b
+            ; this register will be one of the cond_flags components
+      jeq end ; this instruction looks up if the a cmp b instruction is 1, if it is it jumps else none
+                  ; in both cases jcmp resets the flag 
+      lda sum
+      add i
+      sta sum
+      ldi 1
+      add i
+      sta i
+      jmp loop
+
+end: 
+      lda sum
+      hlt

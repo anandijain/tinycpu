@@ -43,6 +43,18 @@ static LDA_STEPS: &[Control] = &[
     END,
 ];
 
+static LDB_STEPS: &[Control] = &[
+    Control::DEFAULT
+        .with_bus_source(BusSource::Inst)
+        .with_mar_bus_we(true),
+    Control::DEFAULT.with_mem_hi_we(true),
+    Control::DEFAULT.with_mar_inc(true),
+    Control::DEFAULT
+        .with_bus_source(BusSource::Ram)
+        .with_b_we(true),
+    END,
+];
+
 static ADD_STEPS: &[Control] = &[
     Control::DEFAULT
         .with_bus_source(BusSource::Inst)
@@ -191,6 +203,8 @@ fn execution_steps(op: Op) -> &'static [Control] {
         Op::Jmp => JMP_STEPS,
         Op::Jz => JZ_STEPS,
         Op::Mul => MUL_STEPS,
+        Op::Ldb => LDB_STEPS,
+        Op::Jeq => JMP_STEPS,
         Op::Hlt => HLT_STEPS,
     }
 }
@@ -204,16 +218,24 @@ pub fn create_rom() -> [u32; N_ROM_WORDS] {
         let step = (addr >> 4) & 0b1111;
         let control_flags = addr & 0b1111;
         let is_alu_zero = (control_flags & 1) != 0;
+        let is_a_eq_b = ((control_flags >> 1) & 1) != 0;
+
         if let Some(&fetch_control) = FETCH_STEPS.get(step) {
             *x = fetch_control.raw_value();
             continue;
         }
 
         if let Some(op) = Op::from_repr(opcode as u8) {
+            
             if op == Op::Jz && !is_alu_zero {
                 *x = END.raw_value();
                 continue;
             }
+            if op == Op::Jeq && !is_a_eq_b {
+                *x = END.raw_value();
+                continue;
+            }
+
             if let Some(&step_i) = execution_steps(op).get(step - n_fetch) {
                 *x = step_i.raw_value()
             }

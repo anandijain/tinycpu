@@ -1,6 +1,8 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, parser};
 use std::{fs, io, path::PathBuf, process::ExitCode};
-use tinycpu::{assembler::assemble, compiler, memory::save_memory, rom::create_rom};
+use tinycpu::{
+    assembler::{self, asm_parser, assemble, assemble_ram}, memory::save_memory, rom::create_rom,
+};
 
 #[derive(Parser)]
 #[command(
@@ -22,6 +24,9 @@ enum Command {
         /// RAM image to write, relative to the current directory
         #[arg(short, long, default_value = "RAM.txt")]
         output: PathBuf,
+    },
+    AsmSrc {
+        source: String,
     },
     /// Compile a program into symbolic assembly and a Logisim RAM image
     Compile {
@@ -50,9 +55,22 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::Assemble { source, output } => {
             let text = fs::read_to_string(&source)
                 .map_err(|error| format!("could not read {}: {error}", source.display()))?;
-            let ram = assemble(&text).map_err(|error| format!("{}: {error}", source.display()))?;
+            let exs = asm_parser::exprs(&text).map_err(|e| e.to_string())?;
+            println!("SASM\n{:?}", exs);
+            let insts = assemble(&exs)?;
+            println!("ASM\n{:?}", insts);
+            
+            // asm_parser::exprs
+            // let ram = assemble(&text).map_err(|error| format!("{}: {error}", source.display()))?;
+            let ram = assemble_ram(&insts)?;
             save_memory(&output, &ram, 2, 2).map_err(|error| output_error(&output, error))?;
-            println!("Wrote RAM image to {}", output.display());
+            // println!("Wrote RAM image to {}", output.display());
+        }
+        Command::AsmSrc { source } => {
+
+            let exs = asm_parser::exprs(&source);
+            println!("{:?}", exs);
+
         }
         Command::Rom { output } => {
             let rom = create_rom();
@@ -60,33 +78,35 @@ fn run(cli: Cli) -> Result<(), String> {
             println!("Wrote control ROM to {}", output.display());
         }
         Command::Compile { source, output } => {
-            let sasm_output = source.with_extension("sasm");
-            let output = output.unwrap_or_else(|| source.with_extension("ram"));
-            if source == sasm_output || source == output || sasm_output == output {
-                return Err(
-                    "source, symbolic assembly, and RAM output paths must be different".into(),
-                );
-            }
-            let text = fs::read_to_string(&source)
-                .map_err(|error| format!("could not read {}: {error}", source.display()))?;
-            let sym_asm = compiler::compile(&text)
-                .map_err(|error| format!("{}: {error}", source.display()))?;
-            fs::write(&sasm_output, &sym_asm).map_err(|error| output_error(&sasm_output, error))?;
-            println!("Wrote symbolic assembly to {}", sasm_output.display());
+            // let sasm_output = source.with_extension("sasm");
+            // let output = output.unwrap_or_else(|| source.with_extension("ram"));
+            // if source == sasm_output || source == output || sasm_output == output {
+            //     return Err(
+            //         "source, symbolic assembly, and RAM output paths must be different".into(),
+            //     );
+            // }
+            // let text = fs::read_to_string(&source)
+            //     .map_err(|error| format!("could not read {}: {error}", source.display()))?;
+            // let sym_asm = compiler::compile(&text)
+            //     .map_err(|error| format!("{}: {error}", source.display()))?;
+            // fs::write(&sasm_output, &sym_asm).map_err(|error| output_error(&sasm_output, error))?;
+            // println!("Wrote symbolic assembly to {}", sasm_output.display());
 
-            let ram = assemble(&sym_asm)
-                .map_err(|error| format!("{}: {error}", sasm_output.display()))?;
-            save_memory(&output, &ram, 2, 2).map_err(|error| output_error(&output, error))?;
-            println!("Wrote RAM image to {}", output.display());
+            // let ram = assemble(&sym_asm)
+            //     .map_err(|error| format!("{}: {error}", sasm_output.display()))?;
+            // save_memory(&output, &ram, 2, 2).map_err(|error| output_error(&output, error))?;
+            // println!("Wrote RAM image to {}", output.display());
         }
         Command::CompileSource { source, output } => {
-            let sasm = compiler::compile(&source)?;
-            println!("{}", sasm);
-            if let Some(out) = output {
-                let ram = assemble(&sasm)?;
-                save_memory(&out, &ram, 2, 2).map_err(|error| output_error(&out, error))?;
-                println!("Wrote RAM image to {}", out.display());
-            }
+            // let sasm = compiler::compile(&source)?;
+            // println!("{}", sasm);
+            // if let Some(out) = output {
+            //     let ram = assemble(&sasm)?;
+            //     save_memory(&out, &ram, 2, 2).map_err(|error| output_error(&out, error))?;
+            //     println!("Wrote RAM image to {}", out.display());
+            // }
+            let x: Option<usize> = None;
+            if x.is_none() {}
         }
     }
     Ok(())

@@ -2,7 +2,6 @@ use std::{collections::HashMap, fmt::Display};
 
 use crate::isa::{Instruction, N_RAM_WORDS, Op};
 
-type IntT = u16;
 
 #[derive(Debug, Clone)]
 enum Expr {
@@ -36,41 +35,7 @@ struct Ctx {
     /// for intermediate computations, we need to store to ram, this lets us generate identifiers to be used in the symbolic assembly
     next_intermediate: usize,
 }
-#[derive(Debug)]
-enum Operand {
-    Sym(String),
-    Int(u16),
-}
-impl Display for Operand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Int(n) => write!(f, "{n}"),
-            Self::Sym(x) => f.write_str(x),
-        }
-    }
-}
-#[derive(Debug)]
-struct SInstr {
-    op: Op,
-    operand: Operand,
-}
 
-#[derive(Debug)]
-enum SasmInst {
-    Asm(SInstr),
-    MemAssign((String, usize)),
-}
-impl From<IntT> for Operand {
-    fn from(value: IntT) -> Self {
-        Self::Int(value)
-    }
-}
-
-impl From<&str> for Operand {
-    fn from(name: &str) -> Self {
-        Self::Sym(name.to_owned())
-    }
-}
 fn asm(op: Op, operand: impl Into<Operand>) -> SasmInst {
     SasmInst::Asm(SInstr {
         op,

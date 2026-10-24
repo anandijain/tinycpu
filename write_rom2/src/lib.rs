@@ -4,4 +4,4 @@ pub mod assembler;
 pub mod isa;
 pub mod memory;
 pub mod rom;
-pub mod compiler;
+// pub mod compiler;

@@ -1,7 +1,10 @@
 //! Shared instruction set and encoding used by the compiler and control ROM.
 
+use std::fmt::Display;
+
 use strum::{EnumIter, EnumString, FromRepr};
 
+type IntT = u16;
 pub const OPERAND_WIDTH: usize = 12;
 pub const OPERAND_MAX_VALUE: usize = (1 << OPERAND_WIDTH) - 1;
 pub const RAM_ADDR_WIDTH: usize = OPERAND_WIDTH;
@@ -31,6 +34,9 @@ pub enum Op {
     /// (MUL addr) multiply the contents of A with the value stored at addr, store back in A
     Mul = 8,
     ///
+    Ldb = 9,
+    Jeq = 10,
+    ///
     Hlt = 15,
 }
 
@@ -39,7 +45,7 @@ impl Op {
         !matches!(self, Self::Nop | Self::Hlt)
     }
 
-    pub fn from_src_sym(s: &str) -> Option<Self> {
+    pub fn from_aj_sym(s: &str) -> Option<Self> {
         match s {
             "+" => Some(Op::Add),
             "*" => Some(Op::Mul),
@@ -54,6 +60,6 @@ pub struct Instruction {
     pub operand: u16,
 }
 
-pub fn encode_instruction(i: Instruction) -> u16 {
+pub fn encode_instruction(i: &Instruction) -> u16 {
     ((i.op as u16) << OPERAND_WIDTH) | i.operand
 }

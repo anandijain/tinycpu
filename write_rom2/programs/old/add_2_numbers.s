@@ -1,7 +1,0 @@
-LDI 5
-STA 4094
-LDI 3
-STA 4092
-LDA 4094
-ADD 4092 ; expect 8 in register A
-HLT

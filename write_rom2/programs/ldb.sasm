@@ -1,0 +1,10 @@
+x = 4094
+ldi 5
+sta x
+ldb x
+jmp end
+
+
+end:
+    ldi 1
+    hlt
