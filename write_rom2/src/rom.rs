@@ -71,6 +71,22 @@ static ADD_STEPS: &[Control] = &[
     END,
 ];
 
+static AND_STEPS: &[Control] = &[
+    Control::DEFAULT
+        .with_bus_source(BusSource::Inst)
+        .with_mar_bus_we(true),
+    Control::DEFAULT.with_mem_hi_we(true),
+    Control::DEFAULT.with_mar_inc(true),
+    Control::DEFAULT
+        .with_bus_source(BusSource::Ram)
+        .with_b_we(true),
+    Control::DEFAULT
+        .with_bus_source(BusSource::Alu)
+        .with_alu_source(AluSource::And)
+        .with_a_we(true),
+    END,
+];
+
 /// This sequence also imposes big-endian since the first byte in memory is the MSB
 static STA_STEPS: &[Control] = &[
     Control::DEFAULT
@@ -124,6 +140,15 @@ static MUL_STEPS: &[Control] = &[
         .with_alu_source(AluSource::Mul)
         .with_bus_source(BusSource::Alu)
         .with_a_we(true),
+    END,
+];
+
+static SHR_STEPS: &[Control] = &[
+    Control::DEFAULT
+        .with_alu_source(AluSource::Shr)
+        .with_bus_source(BusSource::Alu)
+        .with_a_we(true),
+    END,
 ];
 
 static HLT_STEPS: &[Control] = &[Control::DEFAULT.with_hlt(true)];
@@ -140,10 +165,12 @@ pub enum BusSource {
     Man = 7,
 }
 
-#[bitenum(u1, exhaustive = true)]
+#[bitenum(u2, exhaustive = true)]
 pub enum AluSource {
     Add = 0,
     Mul = 1,
+    And = 2,
+    Shr = 3,
 }
 
 #[bitfield(u32, default = 0, forbid_overlaps)]
@@ -188,7 +215,7 @@ pub struct Control {
     mem_hi_we: bool,
     #[bit(18, rw)]
     mem_hi_rst: bool,
-    #[bits(19..=19,rw)]
+    #[bits(19..=20, rw)]
     alu_source: AluSource,
 }
 
@@ -205,6 +232,8 @@ fn execution_steps(op: Op) -> &'static [Control] {
         Op::Mul => MUL_STEPS,
         Op::Ldb => LDB_STEPS,
         Op::Jeq => JMP_STEPS,
+        Op::And => AND_STEPS,
+        Op::Shr => SHR_STEPS,
         Op::Hlt => HLT_STEPS,
     }
 }
@@ -226,7 +255,6 @@ pub fn create_rom() -> [u32; N_ROM_WORDS] {
         }
 
         if let Some(op) = Op::from_repr(opcode as u8) {
-            
             if op == Op::Jz && !is_alu_zero {
                 *x = END.raw_value();
                 continue;
