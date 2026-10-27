@@ -8,3 +8,7 @@ Desktop.ini
 
 # Rust build outputs
 target/
+
+*.ram
+*.rom
+*.txt

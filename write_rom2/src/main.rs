@@ -22,7 +22,7 @@ enum Command {
         /// Assembly source, with optional NAME = ADDRESS definitions
         source: PathBuf,
         /// RAM image to write, relative to the current directory
-        #[arg(short, long, default_value = "RAM.txt")]
+        #[arg(short, long, default_value = "RAM.ram")]
         output: PathBuf,
     },
     AsmSrc {
@@ -40,7 +40,7 @@ enum Command {
     /// Generate the control ROM after changing the CPU's microcode
     Rom {
         /// ROM image to write, relative to the current directory
-        #[arg(short, long, default_value = "ROM.txt")]
+        #[arg(short, long, default_value = "ROM.rom")]
         output: PathBuf,
     },
     CompileSource {

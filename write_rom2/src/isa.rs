@@ -38,13 +38,15 @@ pub enum Op {
     Jeq = 10,
     And = 11,
     Shr = 12,
+    Call = 13,
+    Ret = 14,
     ///
     Hlt = 15,
 }
 
 impl Op {
     pub fn requires_operand(self) -> bool {
-        !matches!(self, Self::Nop | Self::Hlt | Self::Shr)
+        !matches!(self, Self::Nop | Self::Hlt | Self::Shr | Self::Ret)
     }
 
     pub fn from_aj_sym(s: &str) -> Option<Self> {

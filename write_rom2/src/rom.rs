@@ -151,6 +151,42 @@ static SHR_STEPS: &[Control] = &[
     END,
 ];
 
+/// 1) decrement by 2 the SP register
+/// 2) MAR <- (new) SP
+/// 3) write PC into RAM
+/// 4) PC <- INST operand
+static CALL_STEPS: &[Control] = &[
+    Control::DEFAULT
+        .with_sp_source(SpSource::Push)// 0 -> 4094
+        .with_sp_we(true),
+    Control::DEFAULT
+        .with_bus_source(BusSource::Sp) // 4094 -> mar
+        .with_mar_bus_we(true),
+    Control::DEFAULT
+        .with_bus_source(BusSource::Pc)
+        .with_ram_msb_we(true),
+    Control::DEFAULT.with_mar_inc(true),
+    Control::DEFAULT
+        .with_bus_source(BusSource::Pc)
+        .with_ram_lsb_we(true),
+    Control::DEFAULT
+        .with_bus_source(BusSource::Inst)
+        .with_pc_jmp(true),
+    END,
+];
+
+/// 1) MAR <- SP
+/// 2) PC <- RAM
+/// 3) (POP) SP += 2
+static RET_STEPS: &[Control] = &[
+    Control::DEFAULT.with_bus_source(BusSource::Sp).with_mar_bus_we(true),
+    Control::DEFAULT.with_mem_hi_we(true),
+    Control::DEFAULT.with_mar_inc(true),
+    Control::DEFAULT.with_bus_source(BusSource::Ram).with_pc_jmp(true),
+    Control::DEFAULT.with_sp_source(SpSource::Pop).with_sp_we(true),
+    END
+];
+
 static HLT_STEPS: &[Control] = &[Control::DEFAULT.with_hlt(true)];
 
 #[bitenum(u3, exhaustive = true)]
@@ -162,7 +198,7 @@ pub enum BusSource {
     Ram = 4,
     Pc = 5,
     Inst = 6,
-    Man = 7,
+    Sp = 7,
 }
 
 #[bitenum(u2, exhaustive = true)]
@@ -171,6 +207,14 @@ pub enum AluSource {
     Mul = 1,
     And = 2,
     Shr = 3,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub enum SpSource {
+    Bus = 0,
+    Push = 1,
+    Pop = 2,
+    Goof = 3,
 }
 
 #[bitfield(u32, default = 0, forbid_overlaps)]
@@ -217,6 +261,10 @@ pub struct Control {
     mem_hi_rst: bool,
     #[bits(19..=20, rw)]
     alu_source: AluSource,
+    #[bit(21, rw)]
+    sp_we: bool,
+    #[bits(22..=23, rw)]
+    sp_source: SpSource,
 }
 
 fn execution_steps(op: Op) -> &'static [Control] {
@@ -234,6 +282,8 @@ fn execution_steps(op: Op) -> &'static [Control] {
         Op::Jeq => JMP_STEPS,
         Op::And => AND_STEPS,
         Op::Shr => SHR_STEPS,
+        Op::Call => CALL_STEPS,
+        Op::Ret => RET_STEPS,
         Op::Hlt => HLT_STEPS,
     }
 }
