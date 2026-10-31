@@ -1,0 +1,343 @@
+mod control_builders;
+
+use std::mem::clocked_memory;
+use std::mem::read_memory;
+
+type Word = uint<16>;
+type Addr = uint<12>;
+type Byte = uint<8>;
+
+struct CpuDebug {
+    x: [Word; 4],
+    // mar: Addr,
+    pc: Addr,
+    instr: Word
+}
+
+entity main(clk: clock) -> CpuDebug {
+    reg(clk) rst: bool initial(true) = false;
+    decl c;
+    let (debug, opcode) = inst datapath(clk, rst, c, 0);
+    let c = inst controller(clk, rst, opcode, c);
+
+    debug
+    
+}
+
+entity regfile<#uint N>(
+    clk: clock, 
+    rst: bool,
+
+    reg_sel: uint<{uint::bits_for(N-1)}>,
+    write_sel: uint<{uint::bits_for(N-1)}>,
+    write_enable: bool, 
+    write_data: Word
+) -> ([Word;N], Word) {
+    let idxs = std::array::unfold(0, fn |i| i +. 1);
+    // x is the register name in rv32
+    reg(clk) x: [Word; N] reset(rst: [0; N]) = idxs.map(fn |i| {
+        if write_enable && i == write_sel {
+            write_data
+        } else {
+            x[i]
+        }
+    });
+
+    (x, x[reg_sel])
+}
+
+enum AluOp {
+    Add, 
+    Mul, 
+    And, 
+    Shr
+}
+
+fn alu(u: Word, v: Word, op: AluOp) -> Word {
+    match op {
+        AluOp::Add => trunc(u + v),
+        AluOp::Mul => trunc(u * v),
+        AluOp::And => u & v,
+        AluOp::Shr => u >> v
+    }
+}
+
+struct Control{
+    reg_sel: uint<2>,
+    write_sel: uint<2>,
+    reg_we: bool, 
+
+    u_we: bool, 
+    v_we: bool, 
+    alu_op: AluOp,     
+
+    bus_src: BusSrc,
+
+    mar_bus_we: bool,
+    mar_inc: bool, 
+
+    pc_jmp: bool, 
+    pc_inc: bool,
+
+    inst_we: bool,
+    inst_step_rst: bool,
+
+    ram_msb_we: bool,
+    ram_lsb_we: bool,
+
+    mem_hi_we: bool, 
+}
+
+enum BusSrc{
+    Reg, 
+    Alu,
+    Pc,  
+    Inst,
+    Ram, 
+    Man
+}
+
+entity datapath(clk: clock, rst: bool, c: Control, manual: Word) -> (CpuDebug, uint<4>) {
+    decl bus; 
+    let (x, reg_out) = inst regfile::<4>(clk, rst, c.reg_sel, c.write_sel, c.reg_we, bus);
+
+    reg(clk) u: Word reset(rst: 0) = if c.u_we {bus} else {u};
+    reg(clk) v: Word reset(rst: 0) = if c.v_we {bus} else {v};
+
+    let alu_out = alu(u, v, c.alu_op);
+
+    reg(clk) mar: Addr reset(rst: 0) = if c.mar_bus_we {trunc(bus)} else if c.mar_inc {trunc(mar + 1)} else {mar};
+    reg(clk) pc: Addr reset(rst: 0) = if c.pc_jmp {trunc(bus)} else if c.pc_inc {trunc(pc + 2)} else {pc};
+    
+    reg(clk) instr: Word reset(rst: 0) = if c.inst_we {bus} else {instr};
+    let opcode: uint<4> = trunc(instr >> 12);
+    
+
+    let ram_write_data: Byte = if c.ram_lsb_we {
+        trunc(bus)
+    } else if c.ram_msb_we {
+        trunc(bus >> 8)
+    } else {
+        0
+    };
+
+    let ram = inst ram(clk, mar, c.ram_lsb_we || c.ram_msb_we, ram_write_data);
+
+    reg(clk) mem_hi: Byte reset(rst: 0) = if c.mem_hi_we {ram} else {mem_hi};
+    
+    let bus = match c.bus_src {
+        BusSrc::Reg => reg_out,
+        BusSrc::Alu => alu_out,
+        BusSrc::Pc => zext(pc),
+        BusSrc::Inst => instr & 0x0fff,
+        BusSrc::Ram => zext(mem_hi) << 8 | zext(ram),
+        BusSrc::Man => manual
+    };
+    let debug = CpuDebug{
+        x: x,
+        pc: pc,
+        instr: instr
+    };
+    (debug, opcode)
+}
+
+
+entity ram(
+    clk: clock, 
+    mar: Addr, 
+    write_enable: bool, 
+    write_data: Byte,
+) -> Byte  {
+    let ram = inst clocked_memory::<4096, 1, 12, Byte>(clk, [(write_enable, mar, write_data)]);
+
+    inst read_memory(ram, mar)
+}
+
+// S(t+1) = f(S(t))
+// fn D(opcode, step, flags) -> Control (Ct) 
+// S(t+1) = U(St, Ct)
+//        = U(St, D(op_t, step_t, flags_t))
+
+entity controller(clk: clock, rst: bool, opcode: uint<4>, c: Control) -> Control {
+    reg(clk) step: uint<4> reset(rst || c.inst_step_rst: 0) = trunc(step + 1);
+    decode(opcode, step)
+
+}
+
+enum IsaOp{
+    Nop, // 0
+    Lda, // 1
+    Add, // 2
+    Sub, // 3
+    Sta, // 4
+    Ldi, // 5
+    Jmp, // 6
+    Jz, // 7
+    Mul, // 8
+    Ldb, // 9
+    Jeq, // 10
+    And, // 11
+    Shr, // 12
+    Call, // 13
+    Ret, // 14
+    Hlt, // 15
+}
+
+fn decode_opcode(bits: uint<4>) -> IsaOp {
+    match bits {
+        0 =>     IsaOp::Nop, // 0
+        1 =>     IsaOp::Lda, // 1
+        2 =>     IsaOp::Add, // 2
+        3 =>     IsaOp::Sub, // 3
+        4 =>     IsaOp::Sta, // 4
+        5 =>     IsaOp::Ldi, // 5
+        6 =>     IsaOp::Jmp, // 6
+        7 =>     IsaOp::Jz,  // 7
+        8 =>     IsaOp::Mul, // 8
+        9 =>     IsaOp::Ldb, // 9
+        10 =>    IsaOp::Jeq, // 10
+        11 =>    IsaOp::And, // 11
+        12 =>    IsaOp::Shr, // 12
+        13 =>    IsaOp::Call,// 13
+        14 =>    IsaOp::Ret, // 14
+        15 =>    IsaOp::Hlt, // 15
+    }
+}
+
+// fetch, (pc_out, mar_in), (mem_hi_we) (mar_inc) (ram_out, inst_in, pc_inc)
+fn decode(opcode: uint<4>, step: uint<4>) -> Control {
+    let END: Control = Control::default().with_inst_step_rst(true);
+    
+    let FETCH_STEPS: [Control; 4] = [
+        Control::default().with_bus_src(BusSrc::Pc).with_mar_bus_we(true),
+        Control::default().with_mem_hi_we(true),
+        Control::default().with_mar_inc(true),
+        Control::default().with_bus_src(BusSrc::Ram).with_inst_we(true).with_pc_inc(true),
+        // Control::default()
+    ];
+
+    let fetch_len = FETCH_STEPS.len();
+    // Nop, // 0
+
+    let NOP_STEPS: [Control; 1] = [END];
+    
+    // Lda, // 1
+    let LDA_STEPS: [Control; 5] = [
+        Control::default().with_bus_src(BusSrc::Inst).with_mar_bus_we(true),
+        Control::default().with_mem_hi_we(true),
+        Control::default().with_mar_inc(true),
+        Control::default().with_bus_src(BusSrc::Ram).with_write_sel(0u2).with_reg_we(true),
+        END
+    ];
+    
+    // Add (addr), // 2
+    // 
+    let ADD_STEPS: [Control; 6] = [
+        Control::default().with_bus_src(BusSrc::Inst).with_mar_bus_we(true),
+        Control::default().with_mem_hi_we(true).with_bus_src(BusSrc::Reg).with_reg_sel(0).with_u_we(true),
+        Control::default().with_mar_inc(true),
+        Control::default().with_bus_src(BusSrc::Ram).with_v_we(true),
+        Control::default().with_alu_op(AluOp::Add).with_bus_src(BusSrc::Alu).with_write_sel(0u2).with_reg_we(true),
+        END
+    ];
+    
+    // Sub, // 3 skipping!
+
+    // Sta (addr), // 4
+    let STA_STEPS: [Control; 5] = [
+        Control::default().with_bus_src(BusSrc::Inst).with_mar_bus_we(true),
+        Control::default().with_bus_src(BusSrc::Reg).with_reg_sel(0).with_ram_msb_we(true),
+        Control::default().with_mar_inc(true),
+        Control::default().with_bus_src(BusSrc::Reg).with_reg_sel(0).with_ram_lsb_we(true),
+        END
+    ];
+
+    // Ldi (operand), // 5
+    let LDI_STEPS: [Control; 2] = [
+        Control::default().with_bus_src(BusSrc::Inst).with_write_sel(0).with_reg_we(true),
+        END
+    ];
+    
+    // Jmp, // 6
+    let JMP_STEPS: [Control; 2] = [
+        Control::default().with_bus_src(BusSrc::Inst).with_pc_jmp(true),
+        END
+    ];
+
+    // Jz, // 7
+    let JZ_STEPS: [Control; 1] = [
+        END
+    ];
+
+    // Mul, // 8
+    let MUL_STEPS: [Control; 6] = [
+        Control::default().with_bus_src(BusSrc::Inst).with_mar_bus_we(true),
+        Control::default().with_mem_hi_we(true).with_bus_src(BusSrc::Reg).with_reg_sel(0).with_u_we(true),
+        Control::default().with_mar_inc(true),
+        Control::default().with_bus_src(BusSrc::Ram).with_v_we(true),
+        Control::default().with_alu_op(AluOp::Mul).with_bus_src(BusSrc::Alu).with_write_sel(0u2).with_reg_we(true),
+        END
+    ];
+    // Ldb, // 9
+    let LDB_STEPS: [Control; 5] = [
+        Control::default().with_bus_src(BusSrc::Inst).with_mar_bus_we(true),
+        Control::default().with_mem_hi_we(true),
+        Control::default().with_mar_inc(true),
+        Control::default().with_bus_src(BusSrc::Ram).with_write_sel(1u2).with_reg_we(true),
+        END
+    ];
+
+    // Jeq, // 10
+    let JEQ_STEPS: [Control; 1] = [
+        END
+    ];
+    // And, // 11
+    let AND_STEPS: [Control; 6] = [
+        Control::default().with_bus_src(BusSrc::Inst).with_mar_bus_we(true),
+        Control::default().with_mem_hi_we(true).with_bus_src(BusSrc::Reg).with_reg_sel(0).with_u_we(true),
+        Control::default().with_mar_inc(true),
+        Control::default().with_bus_src(BusSrc::Ram).with_v_we(true),
+        Control::default().with_alu_op(AluOp::And).with_bus_src(BusSrc::Alu).with_write_sel(0u2).with_reg_we(true),
+        END
+    ];
+    // Shr, // 12
+    let SHR_STEPS: [Control; 6] = [
+        Control::default().with_bus_src(BusSrc::Inst).with_mar_bus_we(true),
+        Control::default().with_mem_hi_we(true).with_bus_src(BusSrc::Reg).with_reg_sel(0).with_u_we(true),
+        Control::default().with_mar_inc(true),
+        Control::default().with_bus_src(BusSrc::Ram).with_v_we(true),
+        Control::default().with_alu_op(AluOp::And).with_bus_src(BusSrc::Alu).with_write_sel(0u2).with_reg_we(true),
+        END
+    ];
+    // Call, // 13
+    let CALL_STEPS = NOP_STEPS;
+
+    // Ret, // 14
+    let RET_STEPS = NOP_STEPS;
+    // Hlt, // 15
+
+
+    if step < 4 {
+        let fstep: uint<2> = trunc(step);
+        FETCH_STEPS[fstep]
+    } else {
+        match decode_opcode(opcode) {
+            IsaOp::Nop => END,
+            IsaOp::Lda => LDA_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Add => ADD_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Sub => END,
+            IsaOp::Sta => STA_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Ldi => LDI_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Jmp => JMP_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Jz => JZ_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Mul => MUL_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Ldb => LDB_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Jeq => JEQ_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::And => AND_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Shr => SHR_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Call => CALL_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Ret => RET_STEPS[trunc(step - zext(fetch_len))],
+            IsaOp::Hlt => END,
+        }
+    }
+}
