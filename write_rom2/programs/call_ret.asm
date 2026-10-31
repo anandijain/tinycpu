@@ -3,7 +3,7 @@ y = 1002
 ldi 0 ; 0 
 sta x ; 2
 sta y ; 4
-
+; f(x) 
 main: 
     call f ; 6
     call f ; 8

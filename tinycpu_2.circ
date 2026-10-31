@@ -1125,6 +1125,17 @@
       <a name="label" val="SP_SEL"/>
       <a name="width" val="2"/>
     </comp>
+    <comp lib="0" loc="(470,460)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="type" val="output"/>
+      <a name="width" val="3"/>
+    </comp>
+    <comp lib="0" loc="(470,460)" name="Tunnel">
+      <a name="facing" val="east"/>
+      <a name="label" val="REG_SEL"/>
+      <a name="width" val="3"/>
+    </comp>
     <comp lib="0" loc="(470,490)" name="Pin">
       <a name="appearance" val="NewPins"/>
       <a name="facing" val="west"/>
@@ -1245,14 +1256,14 @@
       <a name="label" val="SP_REG_EXT"/>
       <a name="width" val="16"/>
     </comp>
-    <comp lib="0" loc="(490,860)" name="Pin">
+    <comp lib="0" loc="(470,790)" name="Pin">
       <a name="appearance" val="NewPins"/>
       <a name="facing" val="west"/>
       <a name="radix" val="16"/>
       <a name="type" val="output"/>
       <a name="width" val="12"/>
     </comp>
-    <comp lib="0" loc="(490,860)" name="Tunnel">
+    <comp lib="0" loc="(470,790)" name="Tunnel">
       <a name="facing" val="east"/>
       <a name="label" val="ROM_LOOKUP"/>
       <a name="width" val="12"/>
@@ -1296,17 +1307,6 @@
       <a name="spacing" val="3"/>
     </comp>
     <comp lib="0" loc="(770,890)" name="Tunnel">
-      <a name="label" val="REG_SEL"/>
-      <a name="width" val="3"/>
-    </comp>
-    <comp lib="0" loc="(790,530)" name="Pin">
-      <a name="appearance" val="NewPins"/>
-      <a name="facing" val="west"/>
-      <a name="type" val="output"/>
-      <a name="width" val="3"/>
-    </comp>
-    <comp lib="0" loc="(790,530)" name="Tunnel">
-      <a name="facing" val="east"/>
       <a name="label" val="REG_SEL"/>
       <a name="width" val="3"/>
     </comp>
@@ -2511,18 +2511,6 @@
     <comp lib="0" loc="(830,980)" name="Tunnel">
       <a name="label" val="m2"/>
     </comp>
-    <comp lib="0" loc="(880,820)" name="Pin">
-      <a name="appearance" val="NewPins"/>
-      <a name="facing" val="west"/>
-      <a name="radix" val="10unsigned"/>
-      <a name="type" val="output"/>
-      <a name="width" val="8"/>
-    </comp>
-    <comp lib="0" loc="(880,820)" name="Tunnel">
-      <a name="facing" val="east"/>
-      <a name="label" val="S3"/>
-      <a name="width" val="8"/>
-    </comp>
     <comp lib="0" loc="(90,470)" name="Splitter">
       <a name="fanout" val="8"/>
       <a name="incoming" val="8"/>
@@ -2679,6 +2667,18 @@
     </comp>
     <comp lib="0" loc="(950,600)" name="Tunnel">
       <a name="label" val="S2"/>
+      <a name="width" val="8"/>
+    </comp>
+    <comp lib="0" loc="(960,740)" name="Pin">
+      <a name="appearance" val="NewPins"/>
+      <a name="facing" val="west"/>
+      <a name="radix" val="10unsigned"/>
+      <a name="type" val="output"/>
+      <a name="width" val="8"/>
+    </comp>
+    <comp lib="0" loc="(960,740)" name="Tunnel">
+      <a name="facing" val="east"/>
+      <a name="label" val="S3"/>
       <a name="width" val="8"/>
     </comp>
     <comp lib="0" loc="(980,100)" name="Tunnel">

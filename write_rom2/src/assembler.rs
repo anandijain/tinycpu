@@ -130,8 +130,8 @@ pub fn assemble_ram(insts: &Vec<Instruction>) -> Result<[u8; N_RAM_WORDS], Strin
     let mut ram = [0; N_RAM_WORDS];
     let mut addr = 0;
     for (i, inst) in insts.iter().enumerate() {
-        ram[addr..addr+2].copy_from_slice(&encode_instruction(inst).to_be_bytes());
-        addr +=2
+        ram[addr..addr + 2].copy_from_slice(&encode_instruction(inst).to_be_bytes());
+        addr += 2
     }
 
     Ok(ram)
